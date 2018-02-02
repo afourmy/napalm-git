@@ -11,45 +11,30 @@ from sys import argv
 source_path = dirname(abspath(__file__))
 
 napalm_dispatcher = (
-    # Ax: ASR1000, IOS XE
-    ('BNET-A1', 'ios'),
-    # ('BNET-A4', 'ios'),
-    # C10K, IOS
-    # ('BNET-E1', 'ios'),
-    # # C7600, IOS
-    # ('BNET-I1', 'ios'),
-    # # Gx: GSR12K, IOS XR
-    # ('BNET-G1', 'ios-xr'),
-    # ('BNET-G2', 'ios-xr'),
-    # # ASR9K, IOS XR 
-    # ('BNET-P1', 'ios-xr'),
-    # # Juniper devices, Junos
-    # ('BNET-J1', 'junos'),
-    # ('BNET-J2', 'junos'),
+    ('192.168.1.88', 'ios'),
     )
 
 napalm_getters = (
     ('ARP table', 'get_arp_table'),
-    # ('Interfaces counters', 'get_interfaces_counters'),
-    # ('Facts', 'get_facts'),
-    # ('Environment', 'get_environment'),
-    # ('Configuration', 'get_config'),
-    # ('Interfaces', 'get_interfaces'),
-    # ('Interface IP', 'get_interfaces_ip'),
-    # ('LLDP neighbors', 'get_lldp_neighbors'),
-    # ('LLDP neighbors detail', 'get_lldp_neighbors_detail'),
-    # ('MAC address', 'get_mac_address_table'),
-    # ('NTP servers', 'get_ntp_servers'),
-    # ('NTP statistics', 'get_ntp_stats'),
-    # ('Transceivers', 'get_optics'),
-    # ('SNMP', 'get_snmp_information'),
-    # ('Users', 'get_users'),
-    # ('Network instances (VRF)', 'get_network_instances'),
-    # ('NTP peers', 'get_ntp_peers'),
-    # ('BGP configuration', 'get_bgp_config'),
-    # ('BGP neighbors', 'get_bgp_neighbors'),
-    # ('IPv6', 'get_ipv6_neighbors_table'),
-    # ('ISIS neighbors', 'get_isis_neighbors'),
+    ('Interfaces counters', 'get_interfaces_counters'),
+    ('Facts', 'get_facts'),
+    ('Environment', 'get_environment'),
+    ('Configuration', 'get_config'),
+    ('Interfaces', 'get_interfaces'),
+    ('Interface IP', 'get_interfaces_ip'),
+    ('LLDP neighbors', 'get_lldp_neighbors'),
+    ('LLDP neighbors detail', 'get_lldp_neighbors_detail'),
+    ('MAC address', 'get_mac_address_table'),
+    ('NTP servers', 'get_ntp_servers'),
+    ('NTP statistics', 'get_ntp_stats'),
+    ('Transceivers', 'get_optics'),
+    ('SNMP', 'get_snmp_information'),
+    ('Users', 'get_users'),
+    ('Network instances (VRF)', 'get_network_instances'),
+    ('NTP peers', 'get_ntp_peers'),
+    ('BGP configuration', 'get_bgp_config'),
+    ('BGP neighbors', 'get_bgp_neighbors'),
+    ('IPv6', 'get_ipv6_neighbors_table'),
     )
 
 # pretty-print a dictionnary recursively
@@ -68,14 +53,19 @@ def str_dict(input, depth=0):
     else:
         return str(input)
 
-def commit_changes(path):
-    git_ssh_cmd = 'ssh -i ' + '/home/afourmy/.ssh/id_rsa'
-    print(git_ssh_cmd)
-    with Git().custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
-        repo = Repo(path)
-        repo.git.add(A=True)
-        repo.git.commit(m='commit all')
-        repo.remotes.origin.push()
+def git_commit(local_git):
+    repo = Repo(local_git)
+    repo.git.add(A=True)
+    repo.git.commit(m='commit all')
+    repo.remotes.origin.push()
+
+def git_authenticate_and_commit(local_git, ssh_key):
+    if ssh_key:
+        git_ssh_cmd = 'ssh -i ' + ssh_key
+        with Git().custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
+            git_commit(local_git)
+    else:
+        git_commit(local_git)
 
 def open_device(hostname, os_type, username, password):
     driver = get_network_driver(os_type)
@@ -128,10 +118,10 @@ def store_getters(local_git, username, password):
         except Exception as e:
             exception('error with {}: '.format(hostname) + str(e))
 
-def napalm_git_job(local_git, username, password):
+def napalm_git_job(local_git, username, password, ssh_key):
     configure_logging()
     store_getters(local_git, username, password)
-    commit_changes(local_git)
+    git_authenticate_and_commit(local_git, ssh_key)
 
 if __name__ == '__main__':
     # for py2/3 compatibility of input
@@ -145,6 +135,7 @@ if __name__ == '__main__':
         Repo.clone_from(remote_git, local_git)
     if argv[1] == 'schedule':
         local_git = input('Enter URL of local folder: ')
+        ssh_key = input('Path to SSH key: ')
         username = input('Username: ')
         password = getpass()
         seconds = input('Commit every (number of seconds): ')
@@ -152,7 +143,7 @@ if __name__ == '__main__':
         scheduler.add_job(
             napalm_git_job, 
             'interval',
-            [local_git, username, password],
+            [local_git, username, password, ssh_key],
             seconds = int(seconds)
             )
         scheduler.start()
